@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { useStore } from "@/lib/store/useStore";
 import { Navbar } from "@/components/layout/Navbar";
 import { Sidebar } from "@/components/layout/Sidebar";
@@ -14,7 +14,23 @@ import { SettingsView } from "@/components/settings/SettingsView";
 import { CommandPalette } from "@/components/search/CommandPalette";
 
 export default function Home() {
+  const [mounted, setMounted] = useState(false);
   const { currentView } = useStore();
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  if (!mounted) {
+    return (
+      <div className="flex h-screen w-screen items-center justify-center bg-slate-950 text-slate-400 select-none">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+          <span className="text-xs font-mono text-slate-400">CollabSync 로딩 중...</span>
+        </div>
+      </div>
+    );
+  }
 
   const renderCurrentView = () => {
     switch (currentView) {

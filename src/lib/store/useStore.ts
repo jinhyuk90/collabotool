@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { persist } from "zustand/middleware";
 import {
   User,
   Workspace,
@@ -49,6 +50,10 @@ interface AppState {
   files: DriveFile[];
   notifications: Notification[];
   activities: ActivityItem[];
+
+  // Actions: Workspace
+  updateWorkspace: (id: string, updates: Partial<Workspace>) => void;
+  resetToDefaultData: () => void;
 
   // Actions: Chat
   sendMessage: (channelId: string, content: string, attachments?: any[]) => void;
@@ -522,327 +527,380 @@ const initialActivities: ActivityItem[] = [
   },
 ];
 
-export const useStore = create<AppState>((set, get) => ({
-  currentView: "chat",
-  setCurrentView: (view) => set({ currentView: view }),
-  isSidebarOpen: true,
-  setSidebarOpen: (open) => set({ isSidebarOpen: open }),
-  isCommandPaletteOpen: false,
-  setCommandPaletteOpen: (open) => set({ isCommandPaletteOpen: open }),
-
-  activeWorkspaceId: "ws_main",
-  setActiveWorkspaceId: (id) => set({ activeWorkspaceId: id }),
-  activeChannelId: "ch_engineering",
-  setActiveChannelId: (id) => set({ activeChannelId: id, currentView: "chat" }),
-  activeDocId: "doc_1",
-  setActiveDocId: (id) => set({ activeDocId: id, currentView: "docs" }),
-
-  currentUser: initialUsers[0],
-  setCurrentUserStatus: (status) =>
-    set((state) => ({
-      currentUser: { ...state.currentUser, status },
-      users: state.users.map((u) =>
-        u.id === state.currentUser.id ? { ...u, status } : u
-      ),
-    })),
-
-  users: initialUsers,
-  workspaces: initialWorkspaces,
-  channels: initialChannels,
-  messages: initialMessages,
-  tasks: initialTasks,
-  documents: initialDocuments,
-  events: initialEvents,
-  files: initialFiles,
-  notifications: initialNotifications,
-  activities: initialActivities,
-
-  // Chat Actions
-  sendMessage: (channelId, content, attachments = []) => {
-    const { currentUser, messages } = get();
-    if (!content.trim() && attachments.length === 0) return;
-
-    const newMessage: Message = {
-      id: generateId("msg"),
-      channelId,
-      userId: currentUser.id,
-      content,
-      createdAt: new Date().toISOString(),
-      reactions: [],
-      attachments,
-    };
-
-    set({
-      messages: {
-        ...messages,
-        [channelId]: [...(messages[channelId] || []), newMessage],
-      },
-    });
-  },
-
-  addReaction: (channelId, messageId, emoji) => {
-    const { currentUser, messages } = get();
-    const channelMsgs = messages[channelId] || [];
-
-    const updatedMsgs = channelMsgs.map((msg) => {
-      if (msg.id !== messageId) return msg;
-
-      const existingReactionIndex = msg.reactions.findIndex(
-        (r) => r.emoji === emoji
-      );
-
-      let newReactions = [...msg.reactions];
-      if (existingReactionIndex >= 0) {
-        const reaction = newReactions[existingReactionIndex];
-        const userHasReacted = reaction.userIds.includes(currentUser.id);
-
-        if (userHasReacted) {
-          // Remove user reaction
-          const updatedUserIds = reaction.userIds.filter(
-            (id) => id !== currentUser.id
-          );
-          if (updatedUserIds.length === 0) {
-            newReactions.splice(existingReactionIndex, 1);
-          } else {
-            newReactions[existingReactionIndex] = {
-              ...reaction,
-              count: reaction.count - 1,
-              userIds: updatedUserIds,
-            };
-          }
-        } else {
-          // Add user reaction
-          newReactions[existingReactionIndex] = {
-            ...reaction,
-            count: reaction.count + 1,
-            userIds: [...reaction.userIds, currentUser.id],
-          };
-        }
-      } else {
-        newReactions.push({
-          emoji,
-          count: 1,
-          userIds: [currentUser.id],
-        });
-      }
-
-      return { ...msg, reactions: newReactions };
-    });
-
-    set({
-      messages: {
-        ...messages,
-        [channelId]: updatedMsgs,
-      },
-    });
-  },
-
-  createChannel: (name, description, isPrivate) => {
-    const cleanName = name.toLowerCase().replace(/\s+/g, "-");
-    const newChan: Channel = {
-      id: generateId("ch"),
-      workspaceId: get().activeWorkspaceId,
-      name: cleanName,
-      description,
-      isPrivate,
-      unreadCount: 0,
-      createdAt: new Date().toISOString(),
-    };
-
-    set((state) => ({
-      channels: [...state.channels, newChan],
-      activeChannelId: newChan.id,
+export const useStore = create<AppState>()(
+  persist(
+    (set, get) => ({
       currentView: "chat",
-    }));
-  },
+      setCurrentView: (view) => set({ currentView: view }),
+      isSidebarOpen: true,
+      setSidebarOpen: (open) => set({ isSidebarOpen: open }),
+      isCommandPaletteOpen: false,
+      setCommandPaletteOpen: (open) => set({ isCommandPaletteOpen: open }),
 
-  // Task Actions
-  addTask: (taskData) => {
-    const newTask: Task = {
-      ...taskData,
-      id: generateId("tsk"),
-      workspaceId: get().activeWorkspaceId,
-      order: get().tasks.length,
-      createdAt: new Date().toISOString(),
-      checklist: taskData.checklist || [],
-      comments: taskData.comments || [],
-    };
+      activeWorkspaceId: "ws_main",
+      setActiveWorkspaceId: (id) => set({ activeWorkspaceId: id }),
+      activeChannelId: "ch_engineering",
+      setActiveChannelId: (id) => set({ activeChannelId: id, currentView: "chat" }),
+      activeDocId: "doc_1",
+      setActiveDocId: (id) => set({ activeDocId: id, currentView: "docs" }),
 
-    set((state) => ({
-      tasks: [newTask, ...state.tasks],
-    }));
-  },
-
-  moveTask: (taskId, targetColumn) => {
-    set((state) => ({
-      tasks: state.tasks.map((t) =>
-        t.id === taskId ? { ...t, columnId: targetColumn } : t
-      ),
-    }));
-  },
-
-  updateTask: (taskId, updates) => {
-    set((state) => ({
-      tasks: state.tasks.map((t) =>
-        t.id === taskId ? { ...t, ...updates } : t
-      ),
-    }));
-  },
-
-  deleteTask: (taskId) => {
-    set((state) => ({
-      tasks: state.tasks.filter((t) => t.id !== taskId),
-    }));
-  },
-
-  toggleChecklistItem: (taskId, itemId) => {
-    set((state) => ({
-      tasks: state.tasks.map((t) => {
-        if (t.id !== taskId || !t.checklist) return t;
-        return {
-          ...t,
-          checklist: t.checklist.map((item) =>
-            item.id === itemId
-              ? { ...item, completed: !item.completed }
-              : item
+      currentUser: initialUsers[0],
+      setCurrentUserStatus: (status) =>
+        set((state) => ({
+          currentUser: { ...state.currentUser, status },
+          users: state.users.map((u) =>
+            u.id === state.currentUser.id ? { ...u, status } : u
           ),
-        };
-      }),
-    }));
-  },
+        })),
 
-  addTaskComment: (taskId, content) => {
-    const { currentUser } = get();
-    if (!content.trim()) return;
+      users: initialUsers,
+      workspaces: initialWorkspaces,
+      channels: initialChannels,
+      messages: initialMessages,
+      tasks: initialTasks,
+      documents: initialDocuments,
+      events: initialEvents,
+      files: initialFiles,
+      notifications: initialNotifications,
+      activities: initialActivities,
 
-    set((state) => ({
-      tasks: state.tasks.map((t) => {
-        if (t.id !== taskId) return t;
-        const newComment = {
-          id: generateId("cm"),
+      // Workspace Actions
+      updateWorkspace: (id, updates) => {
+        set((state) => ({
+          workspaces: state.workspaces.map((w) =>
+            w.id === id ? { ...w, ...updates } : w
+          ),
+        }));
+      },
+
+      resetToDefaultData: () => {
+        set({
+          users: initialUsers,
+          workspaces: initialWorkspaces,
+          channels: initialChannels,
+          messages: initialMessages,
+          tasks: initialTasks,
+          documents: initialDocuments,
+          events: initialEvents,
+          files: initialFiles,
+          notifications: initialNotifications,
+          activities: initialActivities,
+          activeWorkspaceId: "ws_main",
+          activeChannelId: "ch_engineering",
+          activeDocId: "doc_1",
+          currentView: "chat",
+        });
+        if (typeof window !== "undefined") {
+          localStorage.removeItem("collab_tool_storage_v1");
+        }
+      },
+
+      // Chat Actions
+      sendMessage: (channelId, content, attachments = []) => {
+        const { currentUser, messages } = get();
+        if (!content.trim() && attachments.length === 0) return;
+
+        const newMessage: Message = {
+          id: generateId("msg"),
+          channelId,
           userId: currentUser.id,
           content,
           createdAt: new Date().toISOString(),
+          reactions: [],
+          attachments,
         };
-        return {
-          ...t,
-          comments: [...(t.comments || []), newComment],
+
+        set({
+          messages: {
+            ...messages,
+            [channelId]: [...(messages[channelId] || []), newMessage],
+          },
+        });
+      },
+
+      addReaction: (channelId, messageId, emoji) => {
+        const { currentUser, messages } = get();
+        const channelMsgs = messages[channelId] || [];
+
+        const updatedMsgs = channelMsgs.map((msg) => {
+          if (msg.id !== messageId) return msg;
+
+          const existingReactionIndex = msg.reactions.findIndex(
+            (r) => r.emoji === emoji
+          );
+
+          let newReactions = [...msg.reactions];
+          if (existingReactionIndex >= 0) {
+            const reaction = newReactions[existingReactionIndex];
+            const userHasReacted = reaction.userIds.includes(currentUser.id);
+
+            if (userHasReacted) {
+              const updatedUserIds = reaction.userIds.filter(
+                (id) => id !== currentUser.id
+              );
+              if (updatedUserIds.length === 0) {
+                newReactions.splice(existingReactionIndex, 1);
+              } else {
+                newReactions[existingReactionIndex] = {
+                  ...reaction,
+                  count: reaction.count - 1,
+                  userIds: updatedUserIds,
+                };
+              }
+            } else {
+              newReactions[existingReactionIndex] = {
+                ...reaction,
+                count: reaction.count + 1,
+                userIds: [...reaction.userIds, currentUser.id],
+              };
+            }
+          } else {
+            newReactions.push({
+              emoji,
+              count: 1,
+              userIds: [currentUser.id],
+            });
+          }
+
+          return { ...msg, reactions: newReactions };
+        });
+
+        set({
+          messages: {
+            ...messages,
+            [channelId]: updatedMsgs,
+          },
+        });
+      },
+
+      createChannel: (name, description, isPrivate) => {
+        const cleanName = name.toLowerCase().replace(/\s+/g, "-");
+        const newChan: Channel = {
+          id: generateId("ch"),
+          workspaceId: get().activeWorkspaceId,
+          name: cleanName,
+          description,
+          isPrivate,
+          unreadCount: 0,
+          createdAt: new Date().toISOString(),
         };
+
+        set((state) => ({
+          channels: [...state.channels, newChan],
+          activeChannelId: newChan.id,
+          currentView: "chat",
+        }));
+      },
+
+      // Task Actions
+      addTask: (taskData) => {
+        const newTask: Task = {
+          ...taskData,
+          id: generateId("tsk"),
+          workspaceId: get().activeWorkspaceId,
+          order: get().tasks.length,
+          createdAt: new Date().toISOString(),
+          checklist: taskData.checklist || [],
+          comments: taskData.comments || [],
+        };
+
+        set((state) => ({
+          tasks: [newTask, ...state.tasks],
+        }));
+      },
+
+      moveTask: (taskId, targetColumn) => {
+        set((state) => ({
+          tasks: state.tasks.map((t) =>
+            t.id === taskId ? { ...t, columnId: targetColumn } : t
+          ),
+        }));
+      },
+
+      updateTask: (taskId, updates) => {
+        set((state) => ({
+          tasks: state.tasks.map((t) =>
+            t.id === taskId ? { ...t, ...updates } : t
+          ),
+        }));
+      },
+
+      deleteTask: (taskId) => {
+        set((state) => ({
+          tasks: state.tasks.filter((t) => t.id !== taskId),
+        }));
+      },
+
+      toggleChecklistItem: (taskId, itemId) => {
+        set((state) => ({
+          tasks: state.tasks.map((t) => {
+            if (t.id !== taskId || !t.checklist) return t;
+            return {
+              ...t,
+              checklist: t.checklist.map((item) =>
+                item.id === itemId
+                  ? { ...item, completed: !item.completed }
+                  : item
+              ),
+            };
+          }),
+        }));
+      },
+
+      addTaskComment: (taskId, content) => {
+        const { currentUser } = get();
+        if (!content.trim()) return;
+
+        set((state) => ({
+          tasks: state.tasks.map((t) => {
+            if (t.id !== taskId) return t;
+            const newComment = {
+              id: generateId("cm"),
+              userId: currentUser.id,
+              content,
+              createdAt: new Date().toISOString(),
+            };
+            return {
+              ...t,
+              comments: [...(t.comments || []), newComment],
+            };
+          }),
+        }));
+      },
+
+      // Document Actions
+      createDocument: (title = "제목 없는 문서", parentId = null) => {
+        const newDoc: Document = {
+          id: generateId("doc"),
+          workspaceId: get().activeWorkspaceId,
+          title,
+          icon: "📄",
+          content: `# ${title}\n\n여기에 실시간 협업 내용을 입력하세요...`,
+          parentId,
+          createdBy: get().currentUser.id,
+          updatedAt: new Date().toISOString(),
+        };
+
+        set((state) => ({
+          documents: [newDoc, ...state.documents],
+          activeDocId: newDoc.id,
+          currentView: "docs",
+        }));
+
+        return newDoc.id;
+      },
+
+      updateDocument: (docId, updates) => {
+        set((state) => ({
+          documents: state.documents.map((d) =>
+            d.id === docId
+              ? { ...d, ...updates, updatedAt: new Date().toISOString() }
+              : d
+          ),
+        }));
+      },
+
+      deleteDocument: (docId) => {
+        set((state) => {
+          const remaining = state.documents.filter((d) => d.id !== docId);
+          return {
+            documents: remaining,
+            activeDocId: remaining[0]?.id || "",
+          };
+        });
+      },
+
+      // Calendar Actions
+      addEvent: (eventData) => {
+        const newEvent: CalendarEvent = {
+          ...eventData,
+          id: generateId("ev"),
+          workspaceId: get().activeWorkspaceId,
+          creatorId: get().currentUser.id,
+        };
+        set((state) => ({
+          events: [...state.events, newEvent],
+        }));
+      },
+
+      deleteEvent: (eventId) => {
+        set((state) => ({
+          events: state.events.filter((e) => e.id !== eventId),
+        }));
+      },
+
+      // Drive Actions
+      uploadFile: (name, size, type) => {
+        const newFile: DriveFile = {
+          id: generateId("f"),
+          workspaceId: get().activeWorkspaceId,
+          name,
+          size,
+          type,
+          url: "#",
+          uploadedBy: get().currentUser.id,
+          uploadedAt: new Date().toISOString(),
+        };
+        set((state) => ({
+          files: [newFile, ...state.files],
+        }));
+      },
+
+      deleteFile: (fileId) => {
+        set((state) => ({
+          files: state.files.filter((f) => f.id !== fileId),
+        }));
+      },
+
+      // Notification Actions
+      markAsRead: (id) => {
+        set((state) => ({
+          notifications: state.notifications.map((n) =>
+            n.id === id ? { ...n, isRead: true } : n
+          ),
+        }));
+      },
+
+      markAllAsRead: () => {
+        set((state) => ({
+          notifications: state.notifications.map((n) => ({ ...n, isRead: true })),
+        }));
+      },
+
+      // Member Actions
+      inviteMember: (email, role) => {
+        const newUser: User = {
+          id: generateId("usr"),
+          name: email.split("@")[0],
+          email,
+          avatar: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=120&auto=format&fit=crop&q=80",
+          status: "offline",
+          role,
+        };
+        set((state) => ({
+          users: [...state.users, newUser],
+        }));
+      },
+    }),
+    {
+      name: "collab_tool_storage_v1",
+      partialize: (state) => ({
+        activeWorkspaceId: state.activeWorkspaceId,
+        activeChannelId: state.activeChannelId,
+        activeDocId: state.activeDocId,
+        currentView: state.currentView,
+        currentUser: state.currentUser,
+        users: state.users,
+        workspaces: state.workspaces,
+        channels: state.channels,
+        messages: state.messages,
+        tasks: state.tasks,
+        documents: state.documents,
+        events: state.events,
+        files: state.files,
+        notifications: state.notifications,
+        activities: state.activities,
       }),
-    }));
-  },
-
-  // Document Actions
-  createDocument: (title = "제목 없는 문서", parentId = null) => {
-    const newDoc: Document = {
-      id: generateId("doc"),
-      workspaceId: get().activeWorkspaceId,
-      title,
-      icon: "📄",
-      content: `# ${title}\n\n여기에 실시간 협업 내용을 입력하세요...`,
-      parentId,
-      createdBy: get().currentUser.id,
-      updatedAt: new Date().toISOString(),
-    };
-
-    set((state) => ({
-      documents: [newDoc, ...state.documents],
-      activeDocId: newDoc.id,
-      currentView: "docs",
-    }));
-
-    return newDoc.id;
-  },
-
-  updateDocument: (docId, updates) => {
-    set((state) => ({
-      documents: state.documents.map((d) =>
-        d.id === docId
-          ? { ...d, ...updates, updatedAt: new Date().toISOString() }
-          : d
-      ),
-    }));
-  },
-
-  deleteDocument: (docId) => {
-    set((state) => {
-      const remaining = state.documents.filter((d) => d.id !== docId);
-      return {
-        documents: remaining,
-        activeDocId: remaining[0]?.id || "",
-      };
-    });
-  },
-
-  // Calendar Actions
-  addEvent: (eventData) => {
-    const newEvent: CalendarEvent = {
-      ...eventData,
-      id: generateId("ev"),
-      workspaceId: get().activeWorkspaceId,
-      creatorId: get().currentUser.id,
-    };
-    set((state) => ({
-      events: [...state.events, newEvent],
-    }));
-  },
-
-  deleteEvent: (eventId) => {
-    set((state) => ({
-      events: state.events.filter((e) => e.id !== eventId),
-    }));
-  },
-
-  // Drive Actions
-  uploadFile: (name, size, type) => {
-    const newFile: DriveFile = {
-      id: generateId("f"),
-      workspaceId: get().activeWorkspaceId,
-      name,
-      size,
-      type,
-      url: "#",
-      uploadedBy: get().currentUser.id,
-      uploadedAt: new Date().toISOString(),
-    };
-    set((state) => ({
-      files: [newFile, ...state.files],
-    }));
-  },
-
-  deleteFile: (fileId) => {
-    set((state) => ({
-      files: state.files.filter((f) => f.id !== fileId),
-    }));
-  },
-
-  // Notification Actions
-  markAsRead: (id) => {
-    set((state) => ({
-      notifications: state.notifications.map((n) =>
-        n.id === id ? { ...n, isRead: true } : n
-      ),
-    }));
-  },
-
-  markAllAsRead: () => {
-    set((state) => ({
-      notifications: state.notifications.map((n) => ({ ...n, isRead: true })),
-    }));
-  },
-
-  // Member Actions
-  inviteMember: (email, role) => {
-    const newUser: User = {
-      id: generateId("usr"),
-      name: email.split("@")[0],
-      email,
-      avatar: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=120&auto=format&fit=crop&q=80",
-      status: "offline",
-      role,
-    };
-    set((state) => ({
-      users: [...state.users, newUser],
-    }));
-  },
-}));
+    }
+  )
+);

@@ -12,19 +12,33 @@ import {
   CheckCircle,
   Database,
   Lock,
+  RotateCcw,
+  AlertTriangle,
 } from "lucide-react";
 
 export function SettingsView() {
-  const { workspaces, activeWorkspaceId } = useStore();
+  const { workspaces, activeWorkspaceId, updateWorkspace, resetToDefaultData } = useStore();
   const activeWs = workspaces.find((w) => w.id === activeWorkspaceId);
 
   const [wsName, setWsName] = useState(activeWs?.name || "");
   const [savedSuccess, setSavedSuccess] = useState(false);
+  const [resetSuccess, setResetSuccess] = useState(false);
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
+    if (activeWs && wsName.trim()) {
+      updateWorkspace(activeWs.id, { name: wsName.trim() });
+    }
     setSavedSuccess(true);
     setTimeout(() => setSavedSuccess(false), 2500);
+  };
+
+  const handleResetData = () => {
+    if (window.confirm("모든 메시지, 태스크, 문서를 초기 기본 데모 데이터로 되돌리시겠습니까?")) {
+      resetToDefaultData();
+      setResetSuccess(true);
+      setTimeout(() => setResetSuccess(false), 2500);
+    }
   };
 
   return (
@@ -92,7 +106,7 @@ export function SettingsView() {
             <div className="flex items-center justify-between pt-2">
               {savedSuccess ? (
                 <span className="text-xs text-emerald-400 flex items-center gap-1">
-                  <CheckCircle className="w-3.5 h-3.5" /> 저장되었습니다.
+                  <CheckCircle className="w-3.5 h-3.5" /> 워크스페이스 정보가 저장되었습니다.
                 </span>
               ) : <span />}
 
@@ -152,6 +166,36 @@ export function SettingsView() {
             <ShieldCheck className="w-4 h-4" />
             <span>역할 기반 권한 제어(RBAC) 활성화 완료</span>
           </div>
+        </div>
+
+        {/* Danger Zone: Reset Data */}
+        <div className="bg-rose-950/20 border border-rose-900/50 rounded-2xl p-5 shadow-sm">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-xs font-bold text-rose-300 uppercase tracking-wider flex items-center gap-2 mb-1">
+                <AlertTriangle className="w-4 h-4 text-rose-400" />
+                데이터 초기화 (Reset Demo Data)
+              </h3>
+              <p className="text-xs text-slate-400">
+                테스트 중 추가/수정된 모든 메시지, 작업, 문서를 최초 기본 상태로 복원합니다.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleResetData}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-900/60 hover:bg-rose-800 text-rose-200 text-xs font-semibold border border-rose-800 transition"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              <span>초기 상태로 복원</span>
+            </button>
+          </div>
+
+          {resetSuccess && (
+            <p className="text-xs text-rose-400 mt-2 font-medium">
+              ✓ 모든 데이터가 성공적으로 초기 상태로 복원되었습니다.
+            </p>
+          )}
         </div>
       </div>
     </div>
