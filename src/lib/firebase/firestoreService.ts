@@ -293,6 +293,25 @@ export async function firestoreUpdateReactions(
   }
 }
 
+export async function firestoreAddThreadReply(
+  workspaceId: string,
+  channelId: string,
+  messageId: string,
+  allReplies: any[]
+) {
+  try {
+    await updateDoc(
+      doc(db, "workspaces", workspaceId, "channels", channelId, "messages", messageId),
+      sanitize({
+        threadReplies: allReplies,
+        threadCount: allReplies.length,
+      })
+    );
+  } catch (error) {
+    console.error("Failed to add thread reply in Firestore:", error);
+  }
+}
+
 export async function firestoreCreateChannel(workspaceId: string, channel: Channel) {
   try {
     await setDoc(

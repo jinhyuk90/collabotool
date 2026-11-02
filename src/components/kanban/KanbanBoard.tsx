@@ -44,7 +44,8 @@ export function KanbanBoard() {
     addTaskComment,
   } = useStore();
 
-  const [selectedTask, setSelectedTask] = useState<Task | null>(null);
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  const selectedTask = tasks.find((t) => t.id === selectedTaskId) || null;
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [newTitle, setNewTitle] = useState("");
   const [newDesc, setNewDesc] = useState("");
@@ -78,9 +79,6 @@ export function KanbanBoard() {
     if (!selectedTask || !newCommentInput.trim()) return;
     addTaskComment(selectedTask.id, newCommentInput.trim());
     setNewCommentInput("");
-    // refresh selected task
-    const updated = tasks.find((t) => t.id === selectedTask.id);
-    if (updated) setSelectedTask(updated);
   };
 
   return (
@@ -134,7 +132,7 @@ export function KanbanBoard() {
                   return (
                     <div
                       key={task.id}
-                      onClick={() => setSelectedTask(task)}
+                      onClick={() => setSelectedTaskId(task.id)}
                       className="bg-slate-900 border border-slate-800/80 hover:border-indigo-500/60 rounded-xl p-3.5 shadow-sm hover:shadow-md transition cursor-pointer group"
                     >
                       {/* Priority & Tags */}
@@ -252,7 +250,7 @@ export function KanbanBoard() {
                 <button
                   onClick={() => {
                     deleteTask(selectedTask.id);
-                    setSelectedTask(null);
+                    setSelectedTaskId(null);
                   }}
                   className="p-1.5 rounded-lg text-slate-500 hover:text-rose-400 hover:bg-slate-800 transition"
                   title="태스크 삭제"
@@ -260,7 +258,7 @@ export function KanbanBoard() {
                   <Trash2 className="w-4 h-4" />
                 </button>
                 <button
-                  onClick={() => setSelectedTask(null)}
+                  onClick={() => setSelectedTaskId(null)}
                   className="p-1.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition"
                 >
                   <X className="w-4 h-4" />

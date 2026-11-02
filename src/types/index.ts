@@ -45,6 +45,13 @@ export interface MessageAttachment {
   type: string;
 }
 
+export interface ThreadReply {
+  id: string;
+  userId: string;
+  content: string;
+  createdAt: string;
+}
+
 export interface Message {
   id: string;
   channelId: string;
@@ -54,6 +61,7 @@ export interface Message {
   reactions: MessageReaction[];
   attachments?: MessageAttachment[];
   threadCount?: number;
+  threadReplies?: ThreadReply[];
   isPinned?: boolean;
 }
 

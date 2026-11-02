@@ -21,18 +21,44 @@ export function FileDriveView() {
   const { files, uploadFile, deleteFile, users } = useStore();
   const [filterType, setFilterType] = useState<string>("all");
   const [isUploading, setIsUploading] = useState(false);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   const filteredFiles = files.filter((f) => {
     if (filterType === "all") return true;
     return f.type === filterType;
   });
 
-  const handleSimulateUpload = () => {
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const selectedFiles = e.target.files;
+    if (!selectedFiles || selectedFiles.length === 0) return;
+
     setIsUploading(true);
+    const file = selectedFiles[0];
+
+    // Format file size
+    let formattedSize = `${(file.size / 1024).toFixed(1)} KB`;
+    if (file.size > 1024 * 1024) {
+      formattedSize = `${(file.size / (1024 * 1024)).toFixed(1)} MB`;
+    }
+
+    // Detect type
+    let detectedType: DriveFile["type"] = "other";
+    const extension = file.name.split(".").pop()?.toLowerCase();
+    if (["png", "jpg", "jpeg", "gif", "svg", "webp"].includes(extension || "")) {
+      detectedType = "image";
+    } else if (extension === "pdf") {
+      detectedType = "pdf";
+    } else if (["doc", "docx", "txt", "md", "csv", "xlsx", "pptx"].includes(extension || "")) {
+      detectedType = "document";
+    } else if (["zip", "tar", "gz", "7z", "rar"].includes(extension || "")) {
+      detectedType = "archive";
+    }
+
     setTimeout(() => {
-      uploadFile("product_specification_v2.pdf", "3.8 MB", "pdf");
+      uploadFile(file.name, formattedSize, detectedType);
       setIsUploading(false);
-    }, 800);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }, 400);
   };
 
   const getFileIcon = (type: DriveFile["type"]) => {
@@ -63,8 +89,15 @@ export function FileDriveView() {
           </p>
         </div>
 
+        <input
+          type="file"
+          ref={fileInputRef}
+          onChange={handleFileChange}
+          className="hidden"
+        />
+
         <button
-          onClick={handleSimulateUpload}
+          onClick={() => fileInputRef.current?.click()}
           disabled={isUploading}
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow transition disabled:opacity-50"
         >

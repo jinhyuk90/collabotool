@@ -18,6 +18,7 @@ import { generateId } from "@/lib/utils";
 import {
   firestoreSendMessage,
   firestoreUpdateReactions,
+  firestoreAddThreadReply,
   firestoreCreateChannel,
   firestoreSaveTask,
   firestoreUpdateTask,
@@ -99,6 +100,7 @@ interface AppState {
   // Actions: Chat
   sendMessage: (channelId: string, content: string, attachments?: any[]) => void;
   addReaction: (channelId: string, messageId: string, emoji: string) => void;
+  addThreadReply: (channelId: string, messageId: string, content: string) => void;
   createChannel: (name: string, description: string, isPrivate: boolean) => void;
 
   // Actions: Kanban
@@ -761,6 +763,50 @@ export const useStore = create<AppState>()(
           messageId,
           targetMessageReactions
         );
+      },
+
+      addThreadReply: (channelId, messageId, content) => {
+        const { currentUser, messages, activeWorkspaceId } = get();
+        if (!content.trim()) return;
+
+        const channelMsgs = messages[channelId] || [];
+        let updatedReplies: any[] = [];
+
+        const updatedMsgs = channelMsgs.map((msg) => {
+          if (msg.id !== messageId) return msg;
+
+          const newReply = {
+            id: generateId("reply"),
+            userId: currentUser.id,
+            content: content.trim(),
+            createdAt: new Date().toISOString(),
+          };
+
+          const nextReplies = [...(msg.threadReplies || []), newReply];
+          updatedReplies = nextReplies;
+
+          return {
+            ...msg,
+            threadReplies: nextReplies,
+            threadCount: nextReplies.length,
+          };
+        });
+
+        set({
+          messages: {
+            ...messages,
+            [channelId]: updatedMsgs,
+          },
+        });
+
+        if (updatedReplies.length > 0) {
+          firestoreAddThreadReply(
+            activeWorkspaceId,
+            channelId,
+            messageId,
+            updatedReplies
+          );
+        }
       },
 
       createChannel: (name, description, isPrivate) => {

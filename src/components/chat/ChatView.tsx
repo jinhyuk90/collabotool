@@ -25,12 +25,14 @@ export function ChatView() {
     messages,
     sendMessage,
     addReaction,
+    addThreadReply,
     users,
     currentUser,
   } = useStore();
 
   const [inputContent, setInputContent] = useState("");
   const [activeThreadMsgId, setActiveThreadMsgId] = useState<string | null>(null);
+  const [threadReplyInput, setThreadReplyInput] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const activeChannel = channels.find((c) => c.id === activeChannelId) || channels[0];
@@ -260,28 +262,96 @@ export function ChatView() {
         </div>
       </div>
 
-      {/* Optional Thread Sidebar */}
-      {activeThreadMsgId && (
-        <div className="w-80 border-l border-slate-800 bg-slate-900/60 flex flex-col h-full animate-in slide-in-from-right duration-200">
-          <div className="h-14 border-b border-slate-800 px-4 flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-200 flex items-center gap-1.5">
-              <MessageCircle className="w-4 h-4 text-indigo-400" />
-              스레드 토론
-            </span>
-            <button
-              onClick={() => setActiveThreadMsgId(null)}
-              className="text-xs text-slate-400 hover:text-slate-200"
-            >
-              닫기
-            </button>
+      {/* Interactive Thread Sidebar */}
+      {activeThreadMsgId && (() => {
+        const threadMsg = channelMessages.find((m) => m.id === activeThreadMsgId);
+        const threadAuthor = users.find((u) => u.id === threadMsg?.userId);
+
+        const handleSendReply = (e: React.FormEvent) => {
+          e.preventDefault();
+          if (!threadReplyInput.trim() || !activeThreadMsgId) return;
+          addThreadReply(activeChannel.id, activeThreadMsgId, threadReplyInput.trim());
+          setThreadReplyInput("");
+        };
+
+        return (
+          <div className="w-80 border-l border-slate-800 bg-slate-900/80 flex flex-col h-full animate-in slide-in-from-right duration-200">
+            <div className="h-14 border-b border-slate-800 px-4 flex items-center justify-between shrink-0">
+              <span className="text-xs font-bold text-slate-200 flex items-center gap-1.5">
+                <MessageCircle className="w-4 h-4 text-indigo-400" />
+                스레드 토론
+              </span>
+              <button
+                onClick={() => setActiveThreadMsgId(null)}
+                className="text-xs text-slate-400 hover:text-slate-200"
+              >
+                닫기
+              </button>
+            </div>
+
+            {/* Original Message Card */}
+            <div className="p-3 border-b border-slate-800 bg-slate-950/60 shrink-0">
+              <div className="flex items-center gap-2 mb-1">
+                <img
+                  src={threadAuthor?.avatar}
+                  alt={threadAuthor?.name}
+                  className="w-5 h-5 rounded-full object-cover"
+                />
+                <span className="text-xs font-semibold text-slate-200">{threadAuthor?.name}</span>
+                <span className="text-[10px] text-slate-500 font-mono">
+                  {threadMsg && formatTime(threadMsg.createdAt)}
+                </span>
+              </div>
+              <p className="text-xs text-slate-300 whitespace-pre-wrap">{threadMsg?.content}</p>
+            </div>
+
+            {/* Thread Replies List */}
+            <div className="flex-1 p-3 overflow-y-auto space-y-2.5">
+              {!threadMsg?.threadReplies || threadMsg.threadReplies.length === 0 ? (
+                <div className="text-center py-8 text-slate-500 text-xs">
+                  아직 스레드 답글이 없습니다.<br />첫 답글을 남겨 팀원과 토론을 시작하세요!
+                </div>
+              ) : (
+                threadMsg.threadReplies.map((reply) => {
+                  const replyAuthor = users.find((u) => u.id === reply.userId);
+                  return (
+                    <div
+                      key={reply.id}
+                      className="p-2.5 rounded-xl bg-slate-950 border border-slate-800/80 text-xs"
+                    >
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="font-semibold text-indigo-300">{replyAuthor?.name || "팀원"}</span>
+                        <span className="text-[10px] text-slate-500 font-mono">
+                          {formatTime(reply.createdAt)}
+                        </span>
+                      </div>
+                      <p className="text-slate-300 whitespace-pre-wrap">{reply.content}</p>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            {/* Reply Input Form */}
+            <form onSubmit={handleSendReply} className="p-3 border-t border-slate-800 bg-slate-950 flex gap-2">
+              <input
+                type="text"
+                value={threadReplyInput}
+                onChange={(e) => setThreadReplyInput(e.target.value)}
+                placeholder="스레드에 답글 작성..."
+                className="flex-1 bg-slate-900 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-slate-100 focus:outline-none focus:border-indigo-500"
+              />
+              <button
+                type="submit"
+                disabled={!threadReplyInput.trim()}
+                className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white rounded-xl text-xs font-semibold shadow transition"
+              >
+                전송
+              </button>
+            </form>
           </div>
-          <div className="flex-1 p-4 overflow-y-auto">
-            <p className="text-xs text-slate-400">
-              해당 메시지에 대한 세부 댓글 스레드입니다. 팀원들과 심도 깊은 논의를 나눌 수 있습니다.
-            </p>
-          </div>
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 }
