@@ -12,10 +12,14 @@ import { FileDriveView } from "@/components/drive/FileDriveView";
 import { MembersView } from "@/components/members/MembersView";
 import { SettingsView } from "@/components/settings/SettingsView";
 import { CommandPalette } from "@/components/search/CommandPalette";
+import { useFirestoreSync } from "@/lib/firebase/useFirestoreSync";
 
 export default function Home() {
   const [mounted, setMounted] = useState(false);
   const { currentView } = useStore();
+
+  // Activate Real-time Cloud Firestore synchronization across all tabs and devices
+  useFirestoreSync();
 
   useEffect(() => {
     setMounted(true);
@@ -26,7 +30,7 @@ export default function Home() {
       <div className="flex h-screen w-screen items-center justify-center bg-slate-950 text-slate-400 select-none">
         <div className="flex flex-col items-center gap-3">
           <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
-          <span className="text-xs font-mono text-slate-400">CollabSync 로딩 중...</span>
+          <span className="text-xs font-mono text-slate-400">CollabSync 실시간 클라우드 연결 중...</span>
         </div>
       </div>
     );

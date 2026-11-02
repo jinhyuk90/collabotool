@@ -15,8 +15,35 @@ import {
   TaskPriority,
 } from "@/types";
 import { generateId } from "@/lib/utils";
+import {
+  firestoreSendMessage,
+  firestoreUpdateReactions,
+  firestoreCreateChannel,
+  firestoreSaveTask,
+  firestoreUpdateTask,
+  firestoreDeleteTask,
+  firestoreSaveDoc,
+  firestoreUpdateDocDebounced,
+  firestoreDeleteDoc,
+  firestoreSaveEvent,
+  firestoreDeleteEvent,
+  firestoreSaveFile,
+  firestoreDeleteFile,
+  firestoreSaveMember,
+  firestoreUpdateMemberStatus,
+  firestoreUpdateWorkspace,
+} from "@/lib/firebase/firestoreService";
 
-export type ViewType = "chat" | "kanban" | "docs" | "calendar" | "drive" | "members" | "settings";
+export type ViewType =
+  | "chat"
+  | "kanban"
+  | "docs"
+  | "calendar"
+  | "drive"
+  | "members"
+  | "settings";
+
+export type CloudSyncStatus = "connected" | "syncing" | "offline";
 
 interface AppState {
   // Navigation & UI
@@ -37,7 +64,21 @@ interface AppState {
 
   // Current User
   currentUser: User;
+  setCurrentUser: (user: User) => void;
   setCurrentUserStatus: (status: User["status"]) => void;
+
+  // Cloud Sync
+  cloudSyncStatus: CloudSyncStatus;
+  setCloudSyncStatus: (status: CloudSyncStatus) => void;
+
+  // Cloud Inbound Setters (Real-time Firestore listeners)
+  setChannelsFromCloud: (channels: Channel[]) => void;
+  setTasksFromCloud: (tasks: Task[]) => void;
+  setDocumentsFromCloud: (documents: Document[]) => void;
+  setEventsFromCloud: (events: CalendarEvent[]) => void;
+  setFilesFromCloud: (files: DriveFile[]) => void;
+  setMembersFromCloud: (users: User[]) => void;
+  setMessagesFromCloud: (channelId: string, messages: Message[]) => void;
 
   // Data
   users: User[];
@@ -89,12 +130,13 @@ interface AppState {
   inviteMember: (email: string, role: User["role"]) => void;
 }
 
-const initialUsers: User[] = [
+export const initialUsers: User[] = [
   {
     id: "usr_1",
     name: "김민우 (Minwoo)",
     email: "minwoo@collab.io",
-    avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=120&auto=format&fit=crop&q=80",
+    avatar:
+      "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=120&auto=format&fit=crop&q=80",
     status: "online",
     statusMessage: "🚀 Firebase App Hosting 런칭 준비 중",
     role: "owner",
@@ -103,7 +145,8 @@ const initialUsers: User[] = [
     id: "usr_2",
     name: "이지은 (Jieun)",
     email: "jieun@collab.io",
-    avatar: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=120&auto=format&fit=crop&q=80",
+    avatar:
+      "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=120&auto=format&fit=crop&q=80",
     status: "online",
     statusMessage: "Next.js 14 클라이언트 컴포넌트 최적화",
     role: "admin",
@@ -112,7 +155,8 @@ const initialUsers: User[] = [
     id: "usr_3",
     name: "박서준 (Seojun)",
     email: "seojun@collab.io",
-    avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=120&auto=format&fit=crop&q=80",
+    avatar:
+      "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=120&auto=format&fit=crop&q=80",
     status: "busy",
     statusMessage: "Firestore Security Rules 감사 진행",
     role: "member",
@@ -121,14 +165,15 @@ const initialUsers: User[] = [
     id: "usr_4",
     name: "최수아 (Sua)",
     email: "sua@collab.io",
-    avatar: "https://images.unsplash.com/photo-1517841905240-472988babdf9?w=120&auto=format&fit=crop&q=80",
+    avatar:
+      "https://images.unsplash.com/photo-1517841905240-472988babdf9?w=120&auto=format&fit=crop&q=80",
     status: "away",
     statusMessage: "UI/UX 디자인 시스템 V2 작업",
     role: "member",
   },
 ];
 
-const initialWorkspaces: Workspace[] = [
+export const initialWorkspaces: Workspace[] = [
   {
     id: "ws_main",
     name: "넥스트 테크 엔지니어링",
@@ -147,7 +192,7 @@ const initialWorkspaces: Workspace[] = [
   },
 ];
 
-const initialChannels: Channel[] = [
+export const initialChannels: Channel[] = [
   {
     id: "ch_general",
     workspaceId: "ws_main",
@@ -186,13 +231,14 @@ const initialChannels: Channel[] = [
   },
 ];
 
-const initialMessages: Record<string, Message[]> = {
+export const initialMessages: Record<string, Message[]> = {
   ch_engineering: [
     {
       id: "msg_1",
       channelId: "ch_engineering",
       userId: "usr_3",
-      content: "오늘 Firebase App Hosting 환경에 `apphosting.yaml` 설정 적용 완료했습니다! Cloud Run 기반 자동 오토스케일링 및 컨테이너 최적화가 잘 동작하네요.",
+      content:
+        "오늘 Firebase App Hosting 환경에 `apphosting.yaml` 설정 적용 완료했습니다! Cloud Run 기반 자동 오토스케일링 및 컨테이너 최적화가 잘 동작하네요.",
       createdAt: new Date(Date.now() - 1000 * 60 * 50).toISOString(),
       reactions: [
         { emoji: "🚀", count: 3, userIds: ["usr_1", "usr_2", "usr_4"] },
@@ -204,21 +250,19 @@ const initialMessages: Record<string, Message[]> = {
       id: "msg_2",
       channelId: "ch_engineering",
       userId: "usr_2",
-      content: "좋습니다! Next.js App Router의 SSR 스트리밍과 Firestore 실시간 스냅샷 구독 성능 테스트도 99ms 이내로 매우 쾌적합니다. 💯",
+      content:
+        "좋습니다! Next.js App Router의 SSR 스트리밍과 Firestore 실시간 스냅샷 구독 성능 테스트도 99ms 이내로 매우 쾌적합니다. 💯",
       createdAt: new Date(Date.now() - 1000 * 60 * 30).toISOString(),
-      reactions: [
-        { emoji: "👍", count: 2, userIds: ["usr_1", "usr_3"] },
-      ],
+      reactions: [{ emoji: "👍", count: 2, userIds: ["usr_1", "usr_3"] }],
     },
     {
       id: "msg_3",
       channelId: "ch_engineering",
       userId: "usr_1",
-      content: "수고하셨습니다. 칸반 보드에서 백로그 태스크 확인하고 이번 주 스프린트 배포 일정 확정해 주세요!",
+      content:
+        "수고하셨습니다. 칸반 보드에서 백로그 태스크 확인하고 이번 주 스프린트 배포 일정 확정해 주세요!",
       createdAt: new Date(Date.now() - 1000 * 60 * 10).toISOString(),
-      reactions: [
-        { emoji: "🫡", count: 2, userIds: ["usr_2", "usr_3"] },
-      ],
+      reactions: [{ emoji: "🫡", count: 2, userIds: ["usr_2", "usr_3"] }],
     },
   ],
   ch_general: [
@@ -226,7 +270,8 @@ const initialMessages: Record<string, Message[]> = {
       id: "msg_gen_1",
       channelId: "ch_general",
       userId: "usr_1",
-      content: "👋 팀 여러분 환영합니다! 신규 협업 플랫폼(Web Collaboration Suite)에 오신 것을 환영합니다. 모든 채널과 태스크, 위키 문서, 드라이브를 자유롭게 테스트해 보세요.",
+      content:
+        "👋 팀 여러분 환영합니다! 신규 협업 플랫폼(Web Collaboration Suite)에 오신 것을 환영합니다. 모든 채널과 태스크, 위키 문서, 드라이브를 자유롭게 테스트해 보세요.",
       createdAt: new Date(Date.now() - 1000 * 60 * 120).toISOString(),
       reactions: [
         { emoji: "🎉", count: 4, userIds: ["usr_1", "usr_2", "usr_3", "usr_4"] },
@@ -236,12 +281,13 @@ const initialMessages: Record<string, Message[]> = {
   ],
 };
 
-const initialTasks: Task[] = [
+export const initialTasks: Task[] = [
   {
     id: "tsk_1",
     workspaceId: "ws_main",
     title: "Firebase App Hosting Cloud Run 리소스 튜닝",
-    description: "apphosting.yaml 파일에서 concurrency 80 및 minInstances 설정 최적화하여 콜드 스타트 제거",
+    description:
+      "apphosting.yaml 파일에서 concurrency 80 및 minInstances 설정 최적화하여 콜드 스타트 제거",
     columnId: "in_progress",
     priority: "urgent",
     assigneeIds: ["usr_3"],
@@ -253,7 +299,12 @@ const initialTasks: Task[] = [
       { id: "c3", title: "콜드 스타트 레이턴시 측정", completed: false },
     ],
     comments: [
-      { id: "cm1", userId: "usr_1", content: "프로덕션 배포 전에 부하 테스트 결과 공유 바랍니다.", createdAt: new Date().toISOString() },
+      {
+        id: "cm1",
+        userId: "usr_1",
+        content: "프로덕션 배포 전에 부하 테스트 결과 공유 바랍니다.",
+        createdAt: new Date().toISOString(),
+      },
     ],
     order: 0,
     createdAt: new Date(Date.now() - 1000 * 60 * 60 * 24).toISOString(),
@@ -332,7 +383,7 @@ const initialTasks: Task[] = [
   },
 ];
 
-const initialDocuments: Document[] = [
+export const initialDocuments: Document[] = [
   {
     id: "doc_1",
     workspaceId: "ws_main",
@@ -405,7 +456,7 @@ Next.js 14 App Router 애플리케이션은 Firebase App Hosting을 통해 다�
   },
 ];
 
-const initialEvents: CalendarEvent[] = [
+export const initialEvents: CalendarEvent[] = [
   {
     id: "ev_1",
     workspaceId: "ws_main",
@@ -444,7 +495,7 @@ const initialEvents: CalendarEvent[] = [
   },
 ];
 
-const initialFiles: DriveFile[] = [
+export const initialFiles: DriveFile[] = [
   {
     id: "f_1",
     workspaceId: "ws_main",
@@ -477,7 +528,7 @@ const initialFiles: DriveFile[] = [
   },
 ];
 
-const initialNotifications: Notification[] = [
+export const initialNotifications: Notification[] = [
   {
     id: "notif_1",
     userId: "usr_1",
@@ -500,7 +551,7 @@ const initialNotifications: Notification[] = [
   },
 ];
 
-const initialActivities: ActivityItem[] = [
+export const initialActivities: ActivityItem[] = [
   {
     id: "act_1",
     workspaceId: "ws_main",
@@ -545,12 +596,34 @@ export const useStore = create<AppState>()(
       setActiveDocId: (id) => set({ activeDocId: id, currentView: "docs" }),
 
       currentUser: initialUsers[0],
-      setCurrentUserStatus: (status) =>
+      setCurrentUser: (user) => set({ currentUser: user }),
+      setCurrentUserStatus: (status) => {
+        const { currentUser, activeWorkspaceId } = get();
         set((state) => ({
           currentUser: { ...state.currentUser, status },
           users: state.users.map((u) =>
-            u.id === state.currentUser.id ? { ...u, status } : u
+            u.id === currentUser.id ? { ...u, status } : u
           ),
+        }));
+        firestoreUpdateMemberStatus(activeWorkspaceId, currentUser.id, status);
+      },
+
+      cloudSyncStatus: "connected",
+      setCloudSyncStatus: (status) => set({ cloudSyncStatus: status }),
+
+      // Cloud Inbound Setters
+      setChannelsFromCloud: (channels) => set({ channels }),
+      setTasksFromCloud: (tasks) => set({ tasks }),
+      setDocumentsFromCloud: (documents) => set({ documents }),
+      setEventsFromCloud: (events) => set({ events }),
+      setFilesFromCloud: (files) => set({ files }),
+      setMembersFromCloud: (users) => set({ users }),
+      setMessagesFromCloud: (channelId, msgs) =>
+        set((state) => ({
+          messages: {
+            ...state.messages,
+            [channelId]: msgs,
+          },
         })),
 
       users: initialUsers,
@@ -571,6 +644,7 @@ export const useStore = create<AppState>()(
             w.id === id ? { ...w, ...updates } : w
           ),
         }));
+        firestoreUpdateWorkspace(id, updates);
       },
 
       resetToDefaultData: () => {
@@ -597,7 +671,7 @@ export const useStore = create<AppState>()(
 
       // Chat Actions
       sendMessage: (channelId, content, attachments = []) => {
-        const { currentUser, messages } = get();
+        const { currentUser, messages, activeWorkspaceId } = get();
         if (!content.trim() && attachments.length === 0) return;
 
         const newMessage: Message = {
@@ -610,17 +684,23 @@ export const useStore = create<AppState>()(
           attachments,
         };
 
+        // 1. Optimistic local update
         set({
           messages: {
             ...messages,
             [channelId]: [...(messages[channelId] || []), newMessage],
           },
         });
+
+        // 2. Real-time Cloud Firestore write
+        firestoreSendMessage(activeWorkspaceId, channelId, newMessage);
       },
 
       addReaction: (channelId, messageId, emoji) => {
-        const { currentUser, messages } = get();
+        const { currentUser, messages, activeWorkspaceId } = get();
         const channelMsgs = messages[channelId] || [];
+
+        let targetMessageReactions: any[] = [];
 
         const updatedMsgs = channelMsgs.map((msg) => {
           if (msg.id !== messageId) return msg;
@@ -662,22 +742,33 @@ export const useStore = create<AppState>()(
             });
           }
 
+          targetMessageReactions = newReactions;
           return { ...msg, reactions: newReactions };
         });
 
+        // Optimistic update
         set({
           messages: {
             ...messages,
             [channelId]: updatedMsgs,
           },
         });
+
+        // Cloud write
+        firestoreUpdateReactions(
+          activeWorkspaceId,
+          channelId,
+          messageId,
+          targetMessageReactions
+        );
       },
 
       createChannel: (name, description, isPrivate) => {
+        const { activeWorkspaceId } = get();
         const cleanName = name.toLowerCase().replace(/\s+/g, "-");
         const newChan: Channel = {
           id: generateId("ch"),
-          workspaceId: get().activeWorkspaceId,
+          workspaceId: activeWorkspaceId,
           name: cleanName,
           description,
           isPrivate,
@@ -685,71 +776,102 @@ export const useStore = create<AppState>()(
           createdAt: new Date().toISOString(),
         };
 
+        // Optimistic update
         set((state) => ({
           channels: [...state.channels, newChan],
           activeChannelId: newChan.id,
           currentView: "chat",
         }));
+
+        // Cloud write
+        firestoreCreateChannel(activeWorkspaceId, newChan);
       },
 
       // Task Actions
       addTask: (taskData) => {
+        const { activeWorkspaceId, tasks } = get();
         const newTask: Task = {
           ...taskData,
           id: generateId("tsk"),
-          workspaceId: get().activeWorkspaceId,
-          order: get().tasks.length,
+          workspaceId: activeWorkspaceId,
+          order: tasks.length,
           createdAt: new Date().toISOString(),
           checklist: taskData.checklist || [],
           comments: taskData.comments || [],
         };
 
+        // Optimistic update
         set((state) => ({
           tasks: [newTask, ...state.tasks],
         }));
+
+        // Cloud write
+        firestoreSaveTask(activeWorkspaceId, newTask);
       },
 
       moveTask: (taskId, targetColumn) => {
+        const { activeWorkspaceId } = get();
         set((state) => ({
           tasks: state.tasks.map((t) =>
             t.id === taskId ? { ...t, columnId: targetColumn } : t
           ),
         }));
+
+        firestoreUpdateTask(activeWorkspaceId, taskId, { columnId: targetColumn });
       },
 
       updateTask: (taskId, updates) => {
+        const { activeWorkspaceId } = get();
         set((state) => ({
           tasks: state.tasks.map((t) =>
             t.id === taskId ? { ...t, ...updates } : t
           ),
         }));
+
+        firestoreUpdateTask(activeWorkspaceId, taskId, updates);
       },
 
       deleteTask: (taskId) => {
+        const { activeWorkspaceId } = get();
         set((state) => ({
           tasks: state.tasks.filter((t) => t.id !== taskId),
         }));
+
+        firestoreDeleteTask(activeWorkspaceId, taskId);
       },
 
       toggleChecklistItem: (taskId, itemId) => {
+        const { activeWorkspaceId, tasks } = get();
+        let updatedChecklist: any[] = [];
+
         set((state) => ({
           tasks: state.tasks.map((t) => {
             if (t.id !== taskId || !t.checklist) return t;
+            const newChecklist = t.checklist.map((item) =>
+              item.id === itemId
+                ? { ...item, completed: !item.completed }
+                : item
+            );
+            updatedChecklist = newChecklist;
             return {
               ...t,
-              checklist: t.checklist.map((item) =>
-                item.id === itemId
-                  ? { ...item, completed: !item.completed }
-                  : item
-              ),
+              checklist: newChecklist,
             };
           }),
         }));
+
+        if (updatedChecklist.length > 0) {
+          firestoreUpdateTask(activeWorkspaceId, taskId, {
+            checklist: updatedChecklist,
+          });
+        }
       },
 
       addTaskComment: (taskId, content) => {
-        const { currentUser } = get();
+        const { currentUser, activeWorkspaceId } = get();
         if (!content.trim()) return;
+
+        let updatedComments: any[] = [];
 
         set((state) => ({
           tasks: state.tasks.map((t) => {
@@ -760,24 +882,33 @@ export const useStore = create<AppState>()(
               content,
               createdAt: new Date().toISOString(),
             };
+            const nextComments = [...(t.comments || []), newComment];
+            updatedComments = nextComments;
             return {
               ...t,
-              comments: [...(t.comments || []), newComment],
+              comments: nextComments,
             };
           }),
         }));
+
+        if (updatedComments.length > 0) {
+          firestoreUpdateTask(activeWorkspaceId, taskId, {
+            comments: updatedComments,
+          });
+        }
       },
 
       // Document Actions
       createDocument: (title = "제목 없는 문서", parentId = null) => {
+        const { activeWorkspaceId, currentUser } = get();
         const newDoc: Document = {
           id: generateId("doc"),
-          workspaceId: get().activeWorkspaceId,
+          workspaceId: activeWorkspaceId,
           title,
           icon: "📄",
           content: `# ${title}\n\n여기에 실시간 협업 내용을 입력하세요...`,
           parentId,
-          createdBy: get().currentUser.id,
+          createdBy: currentUser.id,
           updatedAt: new Date().toISOString(),
         };
 
@@ -787,20 +918,28 @@ export const useStore = create<AppState>()(
           currentView: "docs",
         }));
 
+        firestoreSaveDoc(activeWorkspaceId, newDoc);
         return newDoc.id;
       },
 
       updateDocument: (docId, updates) => {
+        const { activeWorkspaceId } = get();
+        const fullUpdates = {
+          ...updates,
+          updatedAt: new Date().toISOString(),
+        };
+
         set((state) => ({
           documents: state.documents.map((d) =>
-            d.id === docId
-              ? { ...d, ...updates, updatedAt: new Date().toISOString() }
-              : d
+            d.id === docId ? { ...d, ...fullUpdates } : d
           ),
         }));
+
+        firestoreUpdateDocDebounced(activeWorkspaceId, docId, fullUpdates);
       },
 
       deleteDocument: (docId) => {
+        const { activeWorkspaceId } = get();
         set((state) => {
           const remaining = state.documents.filter((d) => d.id !== docId);
           return {
@@ -808,48 +947,64 @@ export const useStore = create<AppState>()(
             activeDocId: remaining[0]?.id || "",
           };
         });
+
+        firestoreDeleteDoc(activeWorkspaceId, docId);
       },
 
       // Calendar Actions
       addEvent: (eventData) => {
+        const { activeWorkspaceId, currentUser } = get();
         const newEvent: CalendarEvent = {
           ...eventData,
           id: generateId("ev"),
-          workspaceId: get().activeWorkspaceId,
-          creatorId: get().currentUser.id,
+          workspaceId: activeWorkspaceId,
+          creatorId: currentUser.id,
         };
+
         set((state) => ({
           events: [...state.events, newEvent],
         }));
+
+        firestoreSaveEvent(activeWorkspaceId, newEvent);
       },
 
       deleteEvent: (eventId) => {
+        const { activeWorkspaceId } = get();
         set((state) => ({
           events: state.events.filter((e) => e.id !== eventId),
         }));
+
+        firestoreDeleteEvent(activeWorkspaceId, eventId);
       },
 
       // Drive Actions
       uploadFile: (name, size, type) => {
+        const { activeWorkspaceId, currentUser } = get();
         const newFile: DriveFile = {
           id: generateId("f"),
-          workspaceId: get().activeWorkspaceId,
+          workspaceId: activeWorkspaceId,
           name,
           size,
           type,
           url: "#",
-          uploadedBy: get().currentUser.id,
+          uploadedBy: currentUser.id,
           uploadedAt: new Date().toISOString(),
         };
+
         set((state) => ({
           files: [newFile, ...state.files],
         }));
+
+        firestoreSaveFile(activeWorkspaceId, newFile);
       },
 
       deleteFile: (fileId) => {
+        const { activeWorkspaceId } = get();
         set((state) => ({
           files: state.files.filter((f) => f.id !== fileId),
         }));
+
+        firestoreDeleteFile(activeWorkspaceId, fileId);
       },
 
       // Notification Actions
@@ -869,17 +1024,22 @@ export const useStore = create<AppState>()(
 
       // Member Actions
       inviteMember: (email, role) => {
+        const { activeWorkspaceId } = get();
         const newUser: User = {
           id: generateId("usr"),
           name: email.split("@")[0],
           email,
-          avatar: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=120&auto=format&fit=crop&q=80",
-          status: "offline",
+          avatar:
+            "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=120&auto=format&fit=crop&q=80",
+          status: "online",
           role,
         };
+
         set((state) => ({
           users: [...state.users, newUser],
         }));
+
+        firestoreSaveMember(activeWorkspaceId, newUser);
       },
     }),
     {
@@ -890,16 +1050,6 @@ export const useStore = create<AppState>()(
         activeDocId: state.activeDocId,
         currentView: state.currentView,
         currentUser: state.currentUser,
-        users: state.users,
-        workspaces: state.workspaces,
-        channels: state.channels,
-        messages: state.messages,
-        tasks: state.tasks,
-        documents: state.documents,
-        events: state.events,
-        files: state.files,
-        notifications: state.notifications,
-        activities: state.activities,
       }),
     }
   )

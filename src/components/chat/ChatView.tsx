@@ -134,7 +134,7 @@ export function ChatView() {
 
                     {/* Reaction Pills */}
                     <div className="flex flex-wrap items-center gap-1.5 mt-2">
-                      {msg.reactions.map((r, i) => {
+                      {(msg.reactions || []).map((r, i) => {
                         const hasReacted = r.userIds.includes(currentUser.id);
                         return (
                           <button

@@ -10,14 +10,17 @@ import {
   ChevronDown,
   Menu,
   Shield,
-  Sparkles,
+  Radio,
 } from "lucide-react";
 import { UserStatus } from "@/types";
 
 export function Navbar() {
   const {
     currentUser,
+    setCurrentUser,
     setCurrentUserStatus,
+    users,
+    cloudSyncStatus,
     notifications,
     markAsRead,
     markAllAsRead,
@@ -87,13 +90,34 @@ export function Navbar() {
         </button>
       </div>
 
-      {/* Right: Cloud Run Status Badge, Notifications, Profile */}
-      <div className="flex items-center gap-3">
+      {/* Right: Cloud Sync Status, Notifications, Profile */}
+      <div className="flex items-center gap-2 sm:gap-3">
+        {/* Real-time Cloud Sync Badge */}
+        <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-900 border border-slate-800 text-[11px] text-slate-300">
+          <span
+            className={`w-2 h-2 rounded-full ${
+              cloudSyncStatus === "connected"
+                ? "bg-emerald-400 animate-pulse"
+                : cloudSyncStatus === "syncing"
+                ? "bg-amber-400 animate-ping"
+                : "bg-rose-400"
+            }`}
+          />
+          <Radio className="w-3 h-3 text-indigo-400" />
+          <span className="text-[10px] font-medium text-slate-300">
+            {cloudSyncStatus === "connected"
+              ? "실시간 클라우드 동기화"
+              : cloudSyncStatus === "syncing"
+              ? "동기화 중..."
+              : "오프라인"}
+          </span>
+        </div>
+
         {/* App Hosting Badge */}
         <div className="hidden lg:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-950/50 border border-emerald-800/50 text-[11px] text-emerald-400">
           <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
           <Cloud className="w-3.5 h-3.5 text-emerald-400" />
-          <span>App Hosting (Cloud Run SSR)</span>
+          <span>App Hosting</span>
         </div>
 
         {/* Notifications Dropdown */}
@@ -179,7 +203,7 @@ export function Navbar() {
           </button>
 
           {isProfileOpen && (
-            <div className="absolute right-0 mt-2 w-56 bg-slate-900 border border-slate-800 rounded-xl shadow-2xl p-2 z-50">
+            <div className="absolute right-0 mt-2 w-64 bg-slate-900 border border-slate-800 rounded-xl shadow-2xl p-2.5 z-50">
               <div className="px-2 py-2 border-b border-slate-800">
                 <p className="text-xs font-semibold text-slate-200">{currentUser.name}</p>
                 <p className="text-[11px] text-slate-400 truncate">{currentUser.email}</p>
@@ -188,6 +212,7 @@ export function Navbar() {
                 </div>
               </div>
 
+              {/* Status Switcher */}
               <div className="py-2 space-y-1">
                 <span className="text-[10px] uppercase font-semibold text-slate-500 px-2">
                   접속 상태 변경
@@ -206,9 +231,52 @@ export function Navbar() {
                     }`}
                   >
                     <span className={`w-2 h-2 rounded-full ${statusColors[st]}`} />
-                    <span>{st === "online" ? "온라인 (Online)" : st === "busy" ? "바쁨 (Busy)" : st === "away" ? "자리비움 (Away)" : "오프라인 (Offline)"}</span>
+                    <span>
+                      {st === "online"
+                        ? "온라인 (Online)"
+                        : st === "busy"
+                        ? "바쁨 (Busy)"
+                        : st === "away"
+                        ? "자리비움 (Away)"
+                        : "오프라인 (Offline)"}
+                    </span>
                   </button>
                 ))}
+              </div>
+
+              {/* Multi-account Switcher */}
+              <div className="pt-2 border-t border-slate-800 space-y-1">
+                <span className="text-[10px] uppercase font-semibold text-slate-500 px-2">
+                  프로필 전환 (다른 팀원으로 접속)
+                </span>
+                <div className="max-h-40 overflow-y-auto space-y-0.5">
+                  {users.map((u) => (
+                    <button
+                      key={u.id}
+                      onClick={() => {
+                        setCurrentUser(u);
+                        setIsProfileOpen(false);
+                      }}
+                      className={`w-full flex items-center justify-between px-2 py-1.5 rounded-lg text-xs transition ${
+                        currentUser.id === u.id
+                          ? "bg-indigo-600/20 text-indigo-300 font-semibold"
+                          : "text-slate-300 hover:bg-slate-800/60"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 truncate">
+                        <img
+                          src={u.avatar}
+                          alt={u.name}
+                          className="w-5 h-5 rounded-full object-cover"
+                        />
+                        <span className="truncate">{u.name}</span>
+                      </div>
+                      {currentUser.id === u.id && (
+                        <span className="text-[10px] text-indigo-400 font-mono">현재</span>
+                      )}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
           )}
