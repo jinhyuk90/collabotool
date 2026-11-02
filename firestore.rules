@@ -1,0 +1,81 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Check if user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Check if user is member of the workspace
+    function isWorkspaceMember(workspaceId) {
+      return isAuthenticated() && 
+        exists(/databases/$(database)/documents/workspaces/$(workspaceId)/members/$(request.auth.uid));
+    }
+
+    // Check if user has admin/owner role in workspace
+    function isWorkspaceAdmin(workspaceId) {
+      return isAuthenticated() && 
+        get(/databases/$(database)/documents/workspaces/$(workspaceId)/members/$(request.auth.uid)).data.role in ['owner', 'admin'];
+    }
+
+    // Workspaces collection
+    match /workspaces/{workspaceId} {
+      allow read: if isWorkspaceMember(workspaceId);
+      allow create: if isAuthenticated();
+      allow update, delete: if isWorkspaceAdmin(workspaceId);
+
+      // Members subcollection
+      match /members/{memberId} {
+        allow read: if isWorkspaceMember(workspaceId);
+        allow create, update, delete: if isWorkspaceAdmin(workspaceId) || (isAuthenticated() && request.auth.uid == memberId);
+      }
+
+      // Channels & Messages
+      match /channels/{channelId} {
+        allow read, write: if isWorkspaceMember(workspaceId);
+
+        match /messages/{messageId} {
+          allow read: if isWorkspaceMember(workspaceId);
+          allow create: if isWorkspaceMember(workspaceId);
+          allow update, delete: if isWorkspaceMember(workspaceId) && 
+            (request.auth.uid == resource.data.senderId || isWorkspaceAdmin(workspaceId));
+        }
+      }
+
+      // Task Boards & Tasks
+      match /boards/{boardId} {
+        allow read, write: if isWorkspaceMember(workspaceId);
+
+        match /tasks/{taskId} {
+          allow read, write: if isWorkspaceMember(workspaceId);
+        }
+      }
+
+      // Documents / Wiki
+      match /documents/{docId} {
+        allow read, write: if isWorkspaceMember(workspaceId);
+      }
+
+      // Calendar Events
+      match /events/{eventId} {
+        allow read, write: if isWorkspaceMember(workspaceId);
+      }
+
+      // Files
+      match /files/{fileId} {
+        allow read, write: if isWorkspaceMember(workspaceId);
+      }
+    }
+
+    // User profile documents & personal notifications
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && request.auth.uid == userId;
+
+      match /notifications/{notifId} {
+        allow read, write: if isAuthenticated() && request.auth.uid == userId;
+      }
+    }
+  }
+}
